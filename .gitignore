@@ -1,0 +1,8 @@
+/vendor/
+/node_modules/
+/.phpunit.cache/
+/.phpstan.cache/
+/coverage/
+.env
+.DS_Store
+composer.lock
