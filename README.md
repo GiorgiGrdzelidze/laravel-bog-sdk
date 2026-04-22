@@ -63,6 +63,7 @@ BOG_BONLINE_CLIENT_SECRET=your-client-secret
 BOG_BONLINE_ACCOUNTS=GE00BG0000000000000001,GE00BG0000000000000002
 BOG_BONLINE_DEFAULT_ACCOUNT=GE00BG0000000000000001
 BOG_BONLINE_DEFAULT_CURRENCY=GEL
+BOG_BONLINE_CURRENCIES=GEL,USD,EUR
 
 # 💳 Payments
 BOG_PAYMENTS_CLIENT_ID=your-client-id
@@ -216,36 +217,47 @@ $crossRate = Bog::bonline()->currencyRates()->crossRate('USD', 'EUR');
 $nbgRate = Bog::bonline()->currencyRates()->nbg('USD');
 ```
 
-### 🏦 Multiple Accounts
+### 🏦 Multiple Accounts & Currencies
 
-The SDK supports managing multiple bank accounts via a comma-separated env variable:
+The SDK supports managing multiple bank accounts and currencies via comma-separated env variables:
 
 ```dotenv
 BOG_BONLINE_ACCOUNTS=GE22BG0000000541687311,GE46BG0000000498609082
 BOG_BONLINE_DEFAULT_ACCOUNT=GE22BG0000000541687311
+BOG_BONLINE_CURRENCIES=GEL,USD,EUR
+BOG_BONLINE_DEFAULT_CURRENCY=GEL
 ```
 
-Access the configured accounts list in your code:
+Access the configured lists in your code:
 
 ```php
 $accounts = config('bog-sdk.bonline.accounts');
 // ['GE22BG0000000541687311', 'GE46BG0000000498609082']
 
-// Fetch balance for all accounts
+$currencies = config('bog-sdk.bonline.currencies');
+// ['GEL', 'USD', 'EUR']
+
+// Fetch balance for all accounts and currencies
 foreach ($accounts as $iban) {
-    $balance = Bog::bonline()->balance()->get($iban, 'GEL');
-    echo "{$iban}: {$balance->availableBalance} GEL";
+    foreach ($currencies as $currency) {
+        $balance = Bog::bonline()->balance()->get($iban, $currency);
+        echo "{$iban}: {$balance->availableBalance} {$currency}";
+    }
 }
 
-// Stream transactions across all accounts
+// Stream transactions across all accounts and currencies
 foreach ($accounts as $iban) {
-    foreach (Bog::bonline()->statement()->stream($from, $to, 'GEL', $iban) as $tx) {
-        // process each transaction
+    foreach ($currencies as $currency) {
+        foreach (Bog::bonline()->statement()->stream($from, $to, $currency, $iban) as $tx) {
+            // process each transaction
+        }
     }
 }
 ```
 
-`default_account` is used when no specific account is provided (e.g. by CLI commands).
+- `default_account` is used when no specific account is provided (e.g. by CLI commands).
+- `default_currency` is the fallback when `currencies` is not set.
+- When `BOG_BONLINE_CURRENCIES` is configured, commands automatically iterate over all currencies for each account.
 
 ### 🏛️ Account Requisites
 

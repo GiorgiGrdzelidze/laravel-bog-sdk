@@ -23,6 +23,7 @@ return [
         'accounts' => array_filter(explode(',', env('BOG_BONLINE_ACCOUNTS', ''))),
         'default_account' => env('BOG_BONLINE_DEFAULT_ACCOUNT'),
         'default_currency' => env('BOG_BONLINE_DEFAULT_CURRENCY', 'GEL'),
+        'currencies' => array_filter(explode(',', env('BOG_BONLINE_CURRENCIES', ''))),
     ],
 
     'payments' => [
