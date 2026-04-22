@@ -14,7 +14,8 @@ final readonly class StatementPageDto
      */
     public function __construct(
         public string $id,
-        public int $recordCount,
+        public int $count,
+        public int $totalCount,
         public array $records,
     ) {}
 
@@ -32,7 +33,8 @@ final readonly class StatementPageDto
 
         return new self(
             id: (string) ($data['Id'] ?? ''),
-            recordCount: (int) ($data['RecordCount'] ?? 0),
+            count: (int) ($data['Count'] ?? 0),
+            totalCount: (int) ($data['TotalCount'] ?? 0),
             records: $records,
         );
     }
@@ -46,7 +48,8 @@ final readonly class StatementPageDto
     {
         return [
             'Id' => $this->id,
-            'RecordCount' => $this->recordCount,
+            'Count' => $this->count,
+            'TotalCount' => $this->totalCount,
             'Records' => array_map(
                 static fn (TransactionDto $r): array => $r->toArray(),
                 $this->records,

@@ -47,25 +47,30 @@ final class DtoMappingTest extends TestCase
     public function test_transaction_dto_roundtrip(): void
     {
         $data = [
-            'Id' => 123, 'EntryDate' => '2025-01-01T00:00:00',
+            'EntryDate' => '2025-01-01T00:00:00',
             'EntryDocumentNumber' => 'DOC1', 'EntryAccountNumber' => 'GE00',
-            'EntryAmountDebit' => 10.5, 'EntryAmountCredit' => 0,
+            'EntryAmountDebit' => 10.5, 'EntryAmountDebitBase' => 10.5,
+            'EntryAmountCredit' => 0.0, 'EntryAmountCreditBase' => null,
             'EntryAmountBase' => 10.5, 'EntryAmount' => 10.5,
             'EntryComment' => 'Test', 'DocumentProductGroup' => 'TRF',
-            'DocumentValueDate' => '2025-01-01', 'DocumentOperationCode' => 'OUT',
-            'DocumentOperationType' => 'TRANSFER', 'DocumentPayerName' => 'Payer',
-            'DocumentPayerInn' => '111', 'DocumentPayerAccount' => 'GE01',
-            'DocumentBeneficiaryName' => 'Ben', 'DocumentBeneficiaryInn' => '222',
-            'DocumentBeneficiaryAccount' => 'GE02', 'DocumentBeneficiaryBankCode' => 'BAGAGE22',
-            'DocumentBeneficiaryBankName' => 'BOG', 'DocumentNomination' => 'Pay',
-            'DocumentInformation' => 'Info', 'DocumentAdditionalInformation' => 'More',
-            'DocumentSenderInstitution' => 'S', 'DocumentIntermediaryInstitution' => 'I',
-            'DocumentReceiverInstitution' => 'R', 'DocumentPayeeInn' => '333',
+            'DocumentValueDate' => '2025-01-01',
+            'SenderDetails' => ['Name' => 'Payer', 'Inn' => '111', 'AccountNumber' => 'GE01', 'BankCode' => 'BAGAGE22', 'BankName' => 'BOG'],
+            'BeneficiaryDetails' => ['Name' => 'Ben', 'Inn' => '222', 'AccountNumber' => 'GE02', 'BankCode' => 'BAGAGE22', 'BankName' => 'BOG'],
+            'DocumentTreasuryCode' => null, 'DocumentNomination' => 'Pay',
+            'DocumentInformation' => 'Info',
+            'DocumentSourceAmount' => 10.5, 'DocumentSourceCurrency' => 'GEL',
+            'DocumentDestinationAmount' => 10.5, 'DocumentDestinationCurrency' => 'GEL',
+            'DocumentReceiveDate' => '2025-01-01T01:00:00',
+            'DocumentRate' => null, 'DocumentKey' => 123456, 'EntryId' => 999,
+            'DocumentPayerName' => 'Payer', 'DocumentPayerInn' => '111',
+            'DocComment' => 'Comment', 'AuthDate' => null,
         ];
 
         $dto = TransactionDto::fromArray($data);
-        $this->assertSame(123, $dto->id);
+        $this->assertSame(999, $dto->entryId);
         $this->assertSame('Test', $dto->entryComment);
+        $this->assertSame('Payer', $dto->senderName());
+        $this->assertSame('Ben', $dto->beneficiaryName());
         $this->assertEquals($data, $dto->toArray());
     }
 
@@ -73,14 +78,17 @@ final class DtoMappingTest extends TestCase
     {
         $data = [
             'Id' => 'cursor-1',
-            'RecordCount' => 1,
+            'Count' => 1,
+            'TotalCount' => 5,
             'Records' => [
-                ['Id' => 1, 'EntryDate' => '', 'EntryDocumentNumber' => '', 'EntryAccountNumber' => '', 'EntryAmountDebit' => 0, 'EntryAmountCredit' => 0, 'EntryAmountBase' => 0, 'EntryAmount' => 0, 'EntryComment' => '', 'DocumentProductGroup' => '', 'DocumentValueDate' => '', 'DocumentOperationCode' => '', 'DocumentOperationType' => '', 'DocumentPayerName' => '', 'DocumentPayerInn' => '', 'DocumentPayerAccount' => '', 'DocumentBeneficiaryName' => '', 'DocumentBeneficiaryInn' => '', 'DocumentBeneficiaryAccount' => '', 'DocumentBeneficiaryBankCode' => '', 'DocumentBeneficiaryBankName' => '', 'DocumentNomination' => '', 'DocumentInformation' => '', 'DocumentAdditionalInformation' => '', 'DocumentSenderInstitution' => '', 'DocumentIntermediaryInstitution' => '', 'DocumentReceiverInstitution' => '', 'DocumentPayeeInn' => ''],
+                ['EntryDate' => '', 'EntryDocumentNumber' => '', 'EntryAccountNumber' => '', 'EntryAmountDebit' => 0, 'EntryAmountDebitBase' => 0, 'EntryAmountCredit' => 0, 'EntryAmountCreditBase' => null, 'EntryAmountBase' => 0, 'EntryAmount' => 0, 'EntryComment' => '', 'DocumentProductGroup' => '', 'DocumentValueDate' => '', 'SenderDetails' => [], 'BeneficiaryDetails' => [], 'DocumentTreasuryCode' => null, 'DocumentNomination' => '', 'DocumentInformation' => '', 'DocumentSourceAmount' => 0, 'DocumentSourceCurrency' => '', 'DocumentDestinationAmount' => 0, 'DocumentDestinationCurrency' => '', 'DocumentReceiveDate' => '', 'DocumentRate' => null, 'DocumentKey' => 0, 'EntryId' => 1, 'DocumentPayerName' => '', 'DocumentPayerInn' => '', 'DocComment' => '', 'AuthDate' => null],
             ],
         ];
 
         $dto = StatementPageDto::fromArray($data);
         $this->assertSame('cursor-1', $dto->id);
+        $this->assertSame(1, $dto->count);
+        $this->assertSame(5, $dto->totalCount);
         $this->assertCount(1, $dto->records);
         $this->assertInstanceOf(TransactionDto::class, $dto->records[0]);
     }

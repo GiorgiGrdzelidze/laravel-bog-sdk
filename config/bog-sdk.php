@@ -20,6 +20,7 @@ return [
         'token_url' => env('BOG_BONLINE_TOKEN_URL', 'https://account.bog.ge/auth/realms/bog/protocol/openid-connect/token'),
         'client_id' => env('BOG_BONLINE_CLIENT_ID'),
         'client_secret' => env('BOG_BONLINE_CLIENT_SECRET'),
+        'accounts' => array_filter(explode(',', env('BOG_BONLINE_ACCOUNTS', ''))),
         'default_account' => env('BOG_BONLINE_DEFAULT_ACCOUNT'),
         'default_currency' => env('BOG_BONLINE_DEFAULT_CURRENCY', 'GEL'),
     ],

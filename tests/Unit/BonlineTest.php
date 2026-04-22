@@ -26,44 +26,55 @@ final class BonlineTest extends TestCase
         ]);
     }
 
+    private function makeTxFields(array $overrides = []): array
+    {
+        return array_merge([
+            'EntryDate' => '2025-01-15T00:00:00',
+            'EntryDocumentNumber' => '0001',
+            'EntryAccountNumber' => 'GE00BG0000000000000001GEL',
+            'EntryAmountDebit' => 0.0,
+            'EntryAmountDebitBase' => 0.0,
+            'EntryAmountCredit' => 10.0,
+            'EntryAmountCreditBase' => 10.0,
+            'EntryAmountBase' => 10.0,
+            'EntryAmount' => 10.0,
+            'EntryComment' => '',
+            'DocumentProductGroup' => 'TRF',
+            'DocumentValueDate' => '2025-01-15T00:00:00',
+            'SenderDetails' => ['Name' => 'Sender', 'Inn' => '111', 'AccountNumber' => 'GE01', 'BankCode' => 'BAGAGE22', 'BankName' => 'BOG'],
+            'BeneficiaryDetails' => ['Name' => 'Beneficiary', 'Inn' => '222', 'AccountNumber' => 'GE02', 'BankCode' => 'BAGAGE22', 'BankName' => 'BOG'],
+            'DocumentTreasuryCode' => null,
+            'DocumentNomination' => 'Payment',
+            'DocumentInformation' => '',
+            'DocumentSourceAmount' => 10.0,
+            'DocumentSourceCurrency' => 'GEL',
+            'DocumentDestinationAmount' => 10.0,
+            'DocumentDestinationCurrency' => 'GEL',
+            'DocumentReceiveDate' => '2025-01-15T01:00:00',
+            'DocumentRate' => null,
+            'DocumentKey' => 123456,
+            'EntryId' => 999,
+            'DocumentPayerName' => 'Payer',
+            'DocumentPayerInn' => '111',
+            'DocComment' => 'Test comment',
+            'AuthDate' => null,
+        ], $overrides);
+    }
+
     public function test_statement_for_period(): void
     {
         $this->fakeTokenAndEndpoint(
-            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/2025-01-01/2025-01-31/0/1/100',
+            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/2025-01-01/2025-01-31',
             Http::response([
                 'Id' => 12345,
-                'RecordCount' => 1,
+                'Count' => 1,
+                'TotalCount' => 1,
                 'Records' => [
-                    [
-                        'Id' => 999,
-                        'EntryDate' => '2025-01-15T12:34:56',
-                        'EntryDocumentNumber' => '0001',
-                        'EntryAccountNumber' => 'GE00BG0000000000000001',
-                        'EntryAmountDebit' => 0.0,
+                    $this->makeTxFields([
                         'EntryAmountCredit' => 150.25,
-                        'EntryAmountBase' => 150.25,
-                        'EntryAmount' => 150.25,
                         'EntryComment' => 'Test payment',
-                        'DocumentProductGroup' => 'TRF',
-                        'DocumentValueDate' => '2025-01-15T00:00:00',
-                        'DocumentOperationCode' => 'IN',
-                        'DocumentOperationType' => 'TRANSFER',
-                        'DocumentPayerName' => 'Payer',
-                        'DocumentPayerInn' => '123456789',
-                        'DocumentPayerAccount' => 'GE00BG0000000000000002',
-                        'DocumentBeneficiaryName' => 'Beneficiary',
-                        'DocumentBeneficiaryInn' => '987654321',
-                        'DocumentBeneficiaryAccount' => 'GE00BG0000000000000001',
-                        'DocumentBeneficiaryBankCode' => 'BAGAGE22',
-                        'DocumentBeneficiaryBankName' => 'Bank of Georgia',
-                        'DocumentNomination' => 'Payment',
-                        'DocumentInformation' => '',
-                        'DocumentAdditionalInformation' => '',
-                        'DocumentSenderInstitution' => '',
-                        'DocumentIntermediaryInstitution' => '',
-                        'DocumentReceiverInstitution' => '',
-                        'DocumentPayeeInn' => '',
-                    ],
+                        'EntryId' => 999,
+                    ]),
                 ],
             ]),
         );
@@ -79,10 +90,10 @@ final class BonlineTest extends TestCase
 
         $this->assertInstanceOf(StatementPageDto::class, $result);
         $this->assertSame('12345', $result->id);
-        $this->assertSame(1, $result->recordCount);
+        $this->assertSame(1, $result->count);
         $this->assertCount(1, $result->records);
         $this->assertInstanceOf(TransactionDto::class, $result->records[0]);
-        $this->assertSame(999, $result->records[0]->id);
+        $this->assertSame(999, $result->records[0]->entryId);
         $this->assertSame(150.25, $result->records[0]->entryAmountCredit);
         $this->assertSame('Test payment', $result->records[0]->entryComment);
     }
@@ -90,11 +101,9 @@ final class BonlineTest extends TestCase
     public function test_statement_paging(): void
     {
         $this->fakeTokenAndEndpoint(
-            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/12345/2/1',
+            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/12345/2',
             Http::response([
-                'Id' => 12345,
-                'RecordCount' => 0,
-                'Records' => [],
+                $this->makeTxFields(['EntryId' => 1001]),
             ]),
         );
 
@@ -102,29 +111,28 @@ final class BonlineTest extends TestCase
         $client = $this->app->make(BogClient::class);
         $result = $client->bonline()->statement()->page('GE00BG0000000000000001', 'GEL', 12345, 2);
 
-        $this->assertInstanceOf(StatementPageDto::class, $result);
-        $this->assertSame('12345', $result->id);
+        $this->assertIsArray($result);
+        $this->assertCount(1, $result);
+        $this->assertInstanceOf(TransactionDto::class, $result[0]);
+        $this->assertSame(1001, $result[0]->entryId);
     }
 
     public function test_statement_stream_auto_paginates(): void
     {
-        $txFields = ['EntryDate' => '', 'EntryDocumentNumber' => '', 'EntryAccountNumber' => '', 'EntryAmountDebit' => 0.0, 'EntryAmountCredit' => 10.0, 'EntryAmountBase' => 10.0, 'EntryAmount' => 10.0, 'EntryComment' => '', 'DocumentProductGroup' => '', 'DocumentValueDate' => '', 'DocumentOperationCode' => '', 'DocumentOperationType' => '', 'DocumentPayerName' => '', 'DocumentPayerInn' => '', 'DocumentPayerAccount' => '', 'DocumentBeneficiaryName' => '', 'DocumentBeneficiaryInn' => '', 'DocumentBeneficiaryAccount' => '', 'DocumentBeneficiaryBankCode' => '', 'DocumentBeneficiaryBankName' => '', 'DocumentNomination' => '', 'DocumentInformation' => '', 'DocumentAdditionalInformation' => '', 'DocumentSenderInstitution' => '', 'DocumentIntermediaryInstitution' => '', 'DocumentReceiverInstitution' => '', 'DocumentPayeeInn' => ''];
-
         Http::fake([
             'account-test.bog.ge/*' => Http::response([
                 'access_token' => 'bonline-token',
                 'expires_in' => 3600,
                 'token_type' => 'Bearer',
             ]),
-            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/2025-01-01/2025-01-31/0/1/100' => Http::response([
+            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/2025-01-01/2025-01-31' => Http::response([
                 'Id' => 100,
-                'RecordCount' => 2,
-                'Records' => [array_merge(['Id' => 1], $txFields)],
+                'Count' => 2,
+                'TotalCount' => 2,
+                'Records' => [$this->makeTxFields(['EntryId' => 1])],
             ]),
-            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/100/2/1' => Http::response([
-                'Id' => 100,
-                'RecordCount' => 2,
-                'Records' => [array_merge(['Id' => 2], $txFields)],
+            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/100/2' => Http::response([
+                $this->makeTxFields(['EntryId' => 2]),
             ]),
         ]);
 
@@ -142,17 +150,15 @@ final class BonlineTest extends TestCase
         }
 
         $this->assertCount(2, $transactions);
-        $this->assertSame(1, $transactions[0]->id);
-        $this->assertSame(2, $transactions[1]->id);
+        $this->assertSame(1, $transactions[0]->entryId);
+        $this->assertSame(2, $transactions[1]->entryId);
     }
 
     public function test_today_activities(): void
     {
-        $txFields = ['EntryDate' => '2025-01-20T10:00:00', 'EntryDocumentNumber' => '', 'EntryAccountNumber' => '', 'EntryAmountDebit' => 100.0, 'EntryAmountCredit' => 0.0, 'EntryAmountBase' => 100.0, 'EntryAmount' => 100.0, 'EntryComment' => 'Today', 'DocumentProductGroup' => '', 'DocumentValueDate' => '', 'DocumentOperationCode' => '', 'DocumentOperationType' => '', 'DocumentPayerName' => '', 'DocumentPayerInn' => '', 'DocumentPayerAccount' => '', 'DocumentBeneficiaryName' => '', 'DocumentBeneficiaryInn' => '', 'DocumentBeneficiaryAccount' => '', 'DocumentBeneficiaryBankCode' => '', 'DocumentBeneficiaryBankName' => '', 'DocumentNomination' => '', 'DocumentInformation' => '', 'DocumentAdditionalInformation' => '', 'DocumentSenderInstitution' => '', 'DocumentIntermediaryInstitution' => '', 'DocumentReceiverInstitution' => '', 'DocumentPayeeInn' => ''];
-
         $this->fakeTokenAndEndpoint(
             'api-test.businessonline.ge/api/documents/v2/todayactivities/GE00BG0000000000000001/GEL',
-            Http::response(['Records' => [array_merge(['Id' => 555], $txFields)]]),
+            Http::response(['Records' => [$this->makeTxFields(['EntryId' => 555, 'EntryAmountDebit' => 100.0, 'EntryComment' => 'Today'])]]),
         );
 
         /** @var BogClient $client */
@@ -161,7 +167,7 @@ final class BonlineTest extends TestCase
 
         $this->assertCount(1, $activities);
         $this->assertInstanceOf(TransactionDto::class, $activities[0]);
-        $this->assertSame(555, $activities[0]->id);
+        $this->assertSame(555, $activities[0]->entryId);
     }
 
     public function test_summary(): void

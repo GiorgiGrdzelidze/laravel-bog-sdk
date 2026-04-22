@@ -60,6 +60,7 @@ Add the following to your `.env` file. Only configure the APIs you plan to use:
 # 🏢 Business Online (Bonline)
 BOG_BONLINE_CLIENT_ID=your-client-id
 BOG_BONLINE_CLIENT_SECRET=your-client-secret
+BOG_BONLINE_ACCOUNTS=GE00BG0000000000000001,GE00BG0000000000000002
 BOG_BONLINE_DEFAULT_ACCOUNT=GE00BG0000000000000001
 BOG_BONLINE_DEFAULT_CURRENCY=GEL
 
@@ -135,7 +136,7 @@ $balance->blockedAmount;    // 67.90
 ### 📄 Statement (with auto-pagination)
 
 ```php
-// Single page
+// Single page (max 1000 records per request)
 $page = Bog::bonline()->statement()->forPeriod(
     from: new DateTimeImmutable('2026-01-01'),
     to: new DateTimeImmutable('2026-01-31'),
@@ -143,9 +144,9 @@ $page = Bog::bonline()->statement()->forPeriod(
     accountNumber: 'GE29BG0000000123456789',
 );
 
-$page->id;          // statement ID for paging
-$page->recordCount; // total records across all pages
-$page->records;     // TransactionDto[]
+$page->id;    // statement ID for paging
+$page->count; // total records across all pages
+$page->records; // TransactionDto[]
 
 // 🔄 Stream all pages automatically (generator)
 foreach (Bog::bonline()->statement()->stream(
@@ -154,17 +155,22 @@ foreach (Bog::bonline()->statement()->stream(
     currency: 'GEL',
     accountNumber: 'GE29BG0000000123456789',
 ) as $transaction) {
-    echo $transaction->entryDate . ' — ' . $transaction->entryAmount . ' ' . $transaction->entryComment;
+    echo $transaction->entryDate . ' — ' . $transaction->entryAmount;
+    echo $transaction->senderName() . ' → ' . $transaction->beneficiaryName();
+    echo $transaction->documentNomination;
 }
 ```
 
 ### 📑 Statement Paging (manual)
 
+Pages must be fetched sequentially — skipping is not allowed by the API.
+
 ```php
-$page2 = Bog::bonline()->statement()->page(
+// Returns TransactionDto[] (flat array)
+$records = Bog::bonline()->statement()->page(
     accountNumber: 'GE29BG0000000123456789',
     currency: 'GEL',
-    statementId: $page->id,
+    statementId: (int) $page->id,
     pageNumber: 2,
 );
 ```
@@ -172,13 +178,15 @@ $page2 = Bog::bonline()->statement()->page(
 ### 📊 Statement Summary
 
 ```php
-$summary = Bog::bonline()->summary()->get('GE29BG0000000123456789', 'GEL', $statementId);
+// V2 — by date range (no statement ID needed)
+$summary = Bog::bonline()->summary()->forPeriod('GE29BG0000000123456789', 'GEL', '2026-01-01', '2026-01-31');
 
-$summary['GlobalSummary']['OpeningBalance'];
-$summary['GlobalSummary']['ClosingBalance'];
-$summary['GlobalSummary']['DebitTurnover'];
-$summary['GlobalSummary']['CreditTurnover'];
+$summary['GlobalSummary']['CreditSum'];
+$summary['GlobalSummary']['DebitSum'];
 $summary['DailySummaries']; // day-by-day breakdown
+
+// V1 — by statement ID
+$summary = Bog::bonline()->summary()->get('GE29BG0000000123456789', 'GEL', $statementId);
 ```
 
 ### 📅 Today's Activities
@@ -194,16 +202,50 @@ foreach ($activities as $tx) {
 ### 💱 Currency Rates
 
 ```php
-// All rates
+// Commercial rate for a currency
+$rate = Bog::bonline()->currencyRates()->commercial('USD');
+echo "Buy: {$rate->buyRate}, Sell: {$rate->sellRate}";
+
+// All major rates (USD, EUR, GBP)
 $rates = Bog::bonline()->currencyRates()->list();
-foreach ($rates as $rate) {
-    echo "{$rate->fromCurrency}/{$rate->toCurrency}: buy={$rate->buyRate} sell={$rate->sellRate}";
+
+// Cross rate between two currencies (returns float)
+$crossRate = Bog::bonline()->currencyRates()->crossRate('USD', 'EUR');
+
+// NBG official rate (returns float)
+$nbgRate = Bog::bonline()->currencyRates()->nbg('USD');
+```
+
+### 🏦 Multiple Accounts
+
+The SDK supports managing multiple bank accounts via a comma-separated env variable:
+
+```dotenv
+BOG_BONLINE_ACCOUNTS=GE22BG0000000541687311,GE46BG0000000498609082
+BOG_BONLINE_DEFAULT_ACCOUNT=GE22BG0000000541687311
+```
+
+Access the configured accounts list in your code:
+
+```php
+$accounts = config('bog-sdk.bonline.accounts');
+// ['GE22BG0000000541687311', 'GE46BG0000000498609082']
+
+// Fetch balance for all accounts
+foreach ($accounts as $iban) {
+    $balance = Bog::bonline()->balance()->get($iban, 'GEL');
+    echo "{$iban}: {$balance->availableBalance} GEL";
 }
 
-// Specific pair
-$usdGel = Bog::bonline()->currencyRates()->forCurrency('USD', 'GEL');
-echo "NBG rate: " . $usdGel->nbgRate;
+// Stream transactions across all accounts
+foreach ($accounts as $iban) {
+    foreach (Bog::bonline()->statement()->stream($from, $to, 'GEL', $iban) as $tx) {
+        // process each transaction
+    }
+}
 ```
+
+`default_account` is used when no specific account is provided (e.g. by CLI commands).
 
 ### 🏛️ Account Requisites
 
@@ -679,7 +721,7 @@ src/
 
 ## 🧪 Testing
 
-The SDK ships with **108 tests and 319 assertions** ✅
+The SDK ships with **110 tests and 315 assertions** ✅
 
 ```bash
 # Run tests

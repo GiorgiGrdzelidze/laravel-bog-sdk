@@ -13,8 +13,8 @@ use GiorgiGrdzelidze\BogSdk\Http\HttpClient;
 /**
  * Bonline endpoint for account statements (v2 API).
  *
- * Supports generating statements, paginating through results,
- * and auto-paginating via a generator stream.
+ * Max 1000 transactions per request. Use page() for additional records.
+ * Pages must be fetched sequentially — skipping is not allowed.
  */
 final class StatementEndpoint
 {
@@ -24,33 +24,24 @@ final class StatementEndpoint
     ) {}
 
     /**
-     * Generate a statement for a date range (first page).
+     * Generate a statement for a date range (first page, up to 1000 records).
      *
      * @param  DateTimeInterface  $from  Period start date.
      * @param  DateTimeInterface  $to  Period end date.
      * @param  string  $currency  ISO 4217 currency code.
      * @param  string  $accountNumber  IBAN account number.
-     * @param  bool  $includeToday  Whether to include today's transactions.
-     * @param  bool  $orderByDate  Whether to order results by date.
-     * @param  int  $take  Maximum records per page.
      */
     public function forPeriod(
         DateTimeInterface $from,
         DateTimeInterface $to,
         string $currency,
         string $accountNumber,
-        bool $includeToday = false,
-        bool $orderByDate = true,
-        int $take = 100,
     ): StatementPageDto {
         $url = $this->baseUrl.'/statement/v2/'
             .urlencode($accountNumber).'/'
             .urlencode($currency).'/'
             .$from->format('Y-m-d').'/'
-            .$to->format('Y-m-d').'/'
-            .($includeToday ? '1' : '0').'/'
-            .($orderByDate ? '1' : '0').'/'
-            .$take;
+            .$to->format('Y-m-d');
 
         $data = $this->http->get('bonline', $url);
 
@@ -60,44 +51,45 @@ final class StatementEndpoint
     /**
      * Fetch a specific page from an already-generated statement.
      *
+     * Pages must be fetched sequentially (no skipping).
+     * Returns a flat array of TransactionDto (paging endpoint returns an array, not wrapped object).
+     *
      * @param  string  $accountNumber  IBAN account number.
      * @param  string  $currency  ISO 4217 currency code.
      * @param  int  $statementId  The ID returned from the initial forPeriod() call.
-     * @param  int  $pageNumber  Page number to fetch (1-based).
-     * @param  bool  $orderByDate  Whether to order results by date.
+     * @param  int  $pageNumber  Page number to fetch (sequential, starting from 2).
+     * @return TransactionDto[]
      */
     public function page(
         string $accountNumber,
         string $currency,
         int $statementId,
         int $pageNumber,
-        bool $orderByDate = true,
-    ): StatementPageDto {
+    ): array {
         $url = $this->baseUrl.'/statement/v2/'
             .urlencode($accountNumber).'/'
             .urlencode($currency).'/'
             .$statementId.'/'
-            .$pageNumber.'/'
-            .($orderByDate ? '1' : '0');
+            .$pageNumber;
 
         $data = $this->http->get('bonline', $url);
 
-        return StatementPageDto::fromArray($data);
+        return array_map(
+            static fn (array $record): TransactionDto => TransactionDto::fromArray($record),
+            (array) $data,
+        );
     }
 
     /**
      * Auto-paginating generator that yields individual TransactionDto objects.
      *
      * Fetches the first page, then automatically loads subsequent pages
-     * until all records have been yielded.
+     * sequentially until all records have been yielded.
      *
      * @param  DateTimeInterface  $from  Period start date.
      * @param  DateTimeInterface  $to  Period end date.
      * @param  string  $currency  ISO 4217 currency code.
      * @param  string  $accountNumber  IBAN account number.
-     * @param  bool  $includeToday  Whether to include today's transactions.
-     * @param  bool  $orderByDate  Whether to order results by date.
-     * @param  int  $take  Maximum records per page.
      * @return Generator<int, TransactionDto>
      */
     public function stream(
@@ -105,11 +97,8 @@ final class StatementEndpoint
         DateTimeInterface $to,
         string $currency,
         string $accountNumber,
-        bool $includeToday = false,
-        bool $orderByDate = true,
-        int $take = 100,
     ): Generator {
-        $firstPage = $this->forPeriod($from, $to, $currency, $accountNumber, $includeToday, $orderByDate, $take);
+        $firstPage = $this->forPeriod($from, $to, $currency, $accountNumber);
         $yielded = 0;
 
         foreach ($firstPage->records as $record) {
@@ -117,20 +106,20 @@ final class StatementEndpoint
             $yielded++;
         }
 
-        if ($firstPage->id === '' || $yielded >= $firstPage->recordCount) {
+        if ($firstPage->id === '' || $yielded >= $firstPage->count) {
             return;
         }
 
         $pageNumber = 2;
-        while ($yielded < $firstPage->recordCount) {
-            $page = $this->page($accountNumber, $currency, (int) $firstPage->id, $pageNumber, $orderByDate);
+        while ($yielded < $firstPage->count) {
+            $records = $this->page($accountNumber, $currency, (int) $firstPage->id, $pageNumber);
 
-            foreach ($page->records as $record) {
+            foreach ($records as $record) {
                 yield $record;
                 $yielded++;
             }
 
-            if (count($page->records) === 0) {
+            if (count($records) === 0) {
                 break;
             }
 
