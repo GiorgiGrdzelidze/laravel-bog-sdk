@@ -14,17 +14,6 @@ use Illuminate\Support\Facades\Http;
 
 final class IPayTest extends TestCase
 {
-    private function fakeIPayToken(): void
-    {
-        Http::fake([
-            'ipay-test.bog.ge/opay/api/v1/oauth2/token' => Http::response([
-                'access_token' => 'ipay-token',
-                'expires_in' => 3600,
-                'token_type' => 'Bearer',
-            ]),
-        ]);
-    }
-
     public function test_create_ipay_order(): void
     {
         Http::fake([

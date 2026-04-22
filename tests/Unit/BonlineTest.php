@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Http;
 
 final class BonlineTest extends TestCase
 {
-    private function fakeTokenAndEndpoint(string $urlPattern, $response): void
+    private function fakeTokenAndEndpoint(string $urlPattern, mixed $response): void
     {
         Http::fake([
             'account-test.bog.ge/*' => Http::response([
