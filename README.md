@@ -7,8 +7,8 @@
 A comprehensive Laravel SDK for **Bank of Georgia** APIs. Covers all major BOG product lines with typed DTOs, automatic OAuth2 token management, and full test coverage.
 
 [![CI](https://github.com/GiorgiGrdzelidze/laravel-bog-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/GiorgiGrdzelidze/laravel-bog-sdk/actions)
-[![PHP Version](https://img.shields.io/packagist/php-v/giorgigrdzelidze/laravel-bog-sdk)](https://packagist.org/packages/giorgigrdzelidze/laravel-bog-sdk)
-[![License](https://img.shields.io/packagist/l/giorgigrdzelidze/laravel-bog-sdk)](LICENSE.md)
+[![PHP Version](https://img.shields.io/badge/php-%3E%3D8.3-blue)](composer.json)
+[![License](https://img.shields.io/github/license/GiorgiGrdzelidze/laravel-bog-sdk)](LICENSE.md)
 
 ---
 

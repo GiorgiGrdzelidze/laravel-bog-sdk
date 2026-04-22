@@ -15,5 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **BOG-ID**: OpenID Connect redirect, code exchange, userinfo
 - **Open Banking**: Identity Assurance
 - **Infrastructure**: OAuth2 TokenManager with per-domain caching, HttpClient with 401 auto-retry, RSA SHA256 signature verification, 14 typed exceptions, 8 enums, 31 DTOs
-- **Testing**: 108 tests, 319 assertions
+- **Testing**: 110 tests, 315 assertions
+- **Multi-account**: Support for multiple IBAN accounts via `BOG_BONLINE_ACCOUNTS`
+- **Multi-currency**: Support for multiple currencies via `BOG_BONLINE_CURRENCIES`
 - **CI**: GitHub Actions with PHP 8.3/8.4 matrix, PHPStan level 6, Pint code style
