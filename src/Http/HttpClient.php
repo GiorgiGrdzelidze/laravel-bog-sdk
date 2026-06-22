@@ -7,6 +7,7 @@ namespace GiorgiGrdzelidze\BogSdk\Http;
 use GiorgiGrdzelidze\BogSdk\Auth\TokenManager;
 use GiorgiGrdzelidze\BogSdk\Contracts\HttpClientContract;
 use GiorgiGrdzelidze\BogSdk\Exceptions\BogHttpException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -137,6 +138,10 @@ final class HttpClient implements HttpClientContract
             ->retry(
                 (int) ($httpConfig['retry_times'] ?? 2),
                 (int) ($httpConfig['retry_sleep_ms'] ?? 250),
+                // Retry only on transport-level failures. HTTP error statuses are
+                // returned to the caller (handled by request()/getRaw()) so that
+                // non-idempotent POSTs are never silently re-sent on a 4xx/5xx.
+                when: static fn (\Throwable $exception): bool => $exception instanceof ConnectionException,
                 throw: false,
             );
     }

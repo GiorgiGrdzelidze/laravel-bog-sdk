@@ -4,6 +4,20 @@ All notable changes to `laravel-bog-sdk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-06-22
+
+### Fixed
+- **Payments callback parsing**: `OrderCallbackDto` now unwraps the top-level `body` key that BOG wraps the order payload in, and reads the correct field names (`order_id`, `order_status.key`, `purchase_units.request_amount`/`transfer_amount`, `currency_code`). Previously every verified callback returned an empty DTO.
+- **Order details parsing**: `OrderDetailsDto` (`GET /receipt/{order_id}`) now maps the real response fields — `order_id`, `currency_code`, `request_amount`/`transfer_amount`, `payment_detail.transfer_method.key`, `payer_identifier`, `request_rrn`.
+- **HTTP retry**: transport retries are now limited to connection failures, so non-idempotent payment POSTs are never silently re-sent on a 4xx/5xx response.
+- **README**: corrected the callback signature header to `Callback-Signature` (was `X-Signature`).
+
+### Added
+- `OrderCallbackDto` exposes `event`, `zonedRequestTime`, `requestAmount`, `transferAmount`.
+- `OrderDetailsDto` exposes `requestAmount`, `transferAmount`, `refundAmount`.
+- `BOG_PAYMENTS_ENV=sandbox` switches the Payments API and token hosts to the `*-sandbox.bog.ge` endpoints automatically; explicit `BOG_PAYMENTS_BASE_URL`/`BOG_PAYMENTS_TOKEN_URL` still override.
+- README sandbox section with host table and test cards.
+
 ## [1.0.0] - 2026-04-22
 
 ### Added

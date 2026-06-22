@@ -68,11 +68,19 @@ final class PaymentsTest extends TestCase
         $this->fakeTokenAndEndpoint(
             'api-test.bog.ge/payments/v1/receipt/*',
             [
-                'id' => 'order-uuid-123',
-                'order_status' => ['key' => 'completed'],
+                'order_id' => 'order-uuid-123',
+                'order_status' => ['key' => 'completed', 'value' => 'completed'],
                 'external_order_id' => 'MERCHANT-001',
-                'purchase_units' => ['total_amount' => 12.34, 'currency' => 'GEL'],
-                'payment_detail' => ['payment_method' => 'card', 'card_mask' => '4***1234', 'rrn' => '123456789'],
+                'purchase_units' => [
+                    'request_amount' => '12.34',
+                    'transfer_amount' => '12.34',
+                    'currency_code' => 'GEL',
+                ],
+                'payment_detail' => [
+                    'transfer_method' => ['key' => 'card', 'value' => 'card'],
+                    'payer_identifier' => '4***1234',
+                    'request_rrn' => '123456789',
+                ],
             ],
         );
 
@@ -84,7 +92,9 @@ final class PaymentsTest extends TestCase
         $this->assertSame('order-uuid-123', $details->id);
         $this->assertSame('completed', $details->statusKey);
         $this->assertSame(12.34, $details->totalAmount);
+        $this->assertSame('card', $details->paymentMethod);
         $this->assertSame('4***1234', $details->cardMask);
+        $this->assertSame('123456789', $details->rrn);
     }
 
     public function test_refund_order(): void
@@ -250,5 +260,46 @@ final class PaymentsTest extends TestCase
         $this->assertSame(99.99, $array['purchase_units']['total_amount']);
         $this->assertSame('GEL', $array['purchase_units']['currency']);
         $this->assertCount(1, $array['purchase_units']['basket']);
+    }
+
+    public function test_verify_callback_parses_wrapped_body(): void
+    {
+        $keyPair = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($keyPair, $privateKeyPem);
+        $publicKeyPem = openssl_pkey_get_details($keyPair)['key'];
+
+        $publicKeyPath = sys_get_temp_dir().'/bog-callback-'.uniqid().'.pem';
+        file_put_contents($publicKeyPath, $publicKeyPem);
+        $this->app['config']->set('bog-sdk.payments.callback_public_key_path', $publicKeyPath);
+
+        $rawBody = json_encode([
+            'event' => 'order_payment',
+            'zoned_request_time' => '2022-11-23T18:06:37.240559Z',
+            'body' => [
+                'order_id' => 'order-uuid-123',
+                'external_order_id' => 'MERCHANT-001',
+                'order_status' => ['key' => 'completed', 'value' => 'completed'],
+                'purchase_units' => [
+                    'request_amount' => '49.99',
+                    'transfer_amount' => '49.99',
+                    'currency_code' => 'GEL',
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        openssl_sign($rawBody, $signature, openssl_pkey_get_private($privateKeyPem), OPENSSL_ALGO_SHA256);
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $callback = $client->payments()->verifyCallback($rawBody, base64_encode($signature));
+
+        @unlink($publicKeyPath);
+
+        $this->assertSame('order-uuid-123', $callback->id);
+        $this->assertSame('completed', $callback->statusKey);
+        $this->assertSame('MERCHANT-001', $callback->externalOrderId);
+        $this->assertSame(49.99, $callback->totalAmount);
+        $this->assertSame('GEL', $callback->currency);
+        $this->assertSame('order_payment', $callback->event);
     }
 }

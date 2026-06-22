@@ -207,28 +207,63 @@ final class DtoMappingTest extends TestCase
 
     public function test_order_details_dto(): void
     {
+        // Real BOG `GET /receipt/{order_id}` shape: order_id, currency_code,
+        // request/transfer amounts, transfer_method.key, payer_identifier.
         $data = [
-            'id' => 'o1',
-            'order_status' => ['key' => 'completed'],
-            'purchase_units' => ['total_amount' => 99, 'currency' => 'GEL'],
-            'payment_detail' => ['payment_method' => 'card', 'card_mask' => '4***9999', 'rrn' => '111'],
+            'order_id' => 'o1',
+            'external_order_id' => 'EXT-1',
+            'order_status' => ['key' => 'completed', 'value' => 'completed'],
+            'purchase_units' => [
+                'request_amount' => '99.00',
+                'transfer_amount' => '99.00',
+                'refund_amount' => '0.00',
+                'currency_code' => 'GEL',
+            ],
+            'payment_detail' => [
+                'transfer_method' => ['key' => 'card', 'value' => 'card'],
+                'payer_identifier' => '548888****0843',
+                'card_type' => 'visa',
+                'request_rrn' => '111',
+            ],
         ];
         $dto = OrderDetailsDto::fromArray($data);
+        $this->assertSame('o1', $dto->id);
         $this->assertSame('completed', $dto->statusKey);
-        $this->assertSame('4***9999', $dto->cardMask);
+        $this->assertSame('EXT-1', $dto->externalOrderId);
+        $this->assertSame(99.0, $dto->totalAmount);
+        $this->assertSame(99.0, $dto->transferAmount);
+        $this->assertSame('GEL', $dto->currency);
+        $this->assertSame('card', $dto->paymentMethod);
+        $this->assertSame('548888****0843', $dto->cardMask);
+        $this->assertSame('111', $dto->rrn);
     }
 
     public function test_order_callback_dto(): void
     {
+        // Real BOG callback shape: order data nested under `body`, with an
+        // `event` and `zoned_request_time` at the top level.
         $data = [
-            'id' => 'o1',
-            'order_status' => ['key' => 'completed'],
-            'external_order_id' => 'EXT-1',
-            'purchase_units' => ['total_amount' => 50, 'currency' => 'GEL'],
+            'event' => 'order_payment',
+            'zoned_request_time' => '2022-11-23T18:06:37.240559Z',
+            'body' => [
+                'order_id' => 'o1',
+                'external_order_id' => 'EXT-1',
+                'order_status' => ['key' => 'completed', 'value' => 'completed'],
+                'purchase_units' => [
+                    'request_amount' => '50.00',
+                    'transfer_amount' => '50.00',
+                    'currency_code' => 'GEL',
+                ],
+            ],
         ];
         $dto = OrderCallbackDto::fromArray($data);
+        $this->assertSame('o1', $dto->id);
         $this->assertSame('completed', $dto->statusKey);
+        $this->assertSame('EXT-1', $dto->externalOrderId);
         $this->assertSame(50.0, $dto->totalAmount);
+        $this->assertSame(50.0, $dto->transferAmount);
+        $this->assertSame('GEL', $dto->currency);
+        $this->assertSame('order_payment', $dto->event);
     }
 
     public function test_split_account_dto_roundtrip(): void
