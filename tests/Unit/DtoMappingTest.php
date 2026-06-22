@@ -190,8 +190,20 @@ final class DtoMappingTest extends TestCase
         $dto = new BuyerDto('Test', 'test@example.com', '+995599000000');
         $array = $dto->toArray();
         $this->assertSame('Test', $array['full_name']);
-        $this->assertSame('test@example.com', $array['email']);
-        $this->assertSame('+995599000000', $array['phone_number']);
+        $this->assertSame('test@example.com', $array['masked_email']);
+        $this->assertSame('+995599000000', $array['masked_phone']);
+    }
+
+    public function test_buyer_dto_reads_masked_fields_from_array(): void
+    {
+        $dto = BuyerDto::fromArray([
+            'full_name' => 'Test',
+            'masked_email' => 't***@example.com',
+            'masked_phone' => '+9955*****00',
+        ]);
+        $this->assertSame('Test', $dto->fullName);
+        $this->assertSame('t***@example.com', $dto->email);
+        $this->assertSame('+9955*****00', $dto->phoneNumber);
     }
 
     public function test_create_order_response_dto(): void
