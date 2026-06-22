@@ -27,8 +27,10 @@ final class BogSdkServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/bog-sdk.php', 'bog-sdk');
 
         $this->app->singleton(TokenManager::class, function ($app): TokenManager {
+            $store = config('bog-sdk.token_cache.store');
+
             return new TokenManager(
-                cache: $app->make(CacheRepository::class),
+                cache: $store ? $app->make('cache')->store($store) : $app->make(CacheRepository::class),
                 http: $app->make(Factory::class),
                 config: (array) config('bog-sdk'),
             );
