@@ -44,7 +44,7 @@ final readonly class OrderDetailsDto
 
         return new self(
             id: (string) ($body['order_id'] ?? $body['id'] ?? ''),
-            statusKey: (string) ($body['order_status']['key'] ?? ''),
+            statusKey: (string) (is_array($body['order_status'] ?? null) ? ($body['order_status']['key'] ?? '') : ''),
             externalOrderId: $body['external_order_id'] ?? null,
             totalAmount: $totalAmount,
             currency: $purchaseUnits['currency_code'] ?? $purchaseUnits['currency'] ?? null,

@@ -8,6 +8,7 @@ use GiorgiGrdzelidze\BogSdk\Contracts\HttpClientContract;
 use GiorgiGrdzelidze\BogSdk\Exceptions\BogHttpException;
 use GiorgiGrdzelidze\BogSdk\Http\HttpClient;
 use GiorgiGrdzelidze\BogSdk\Tests\TestCase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
 
@@ -143,5 +144,53 @@ final class HttpClientTest extends TestCase
     {
         $client = $this->app->make(HttpClient::class);
         $this->assertInstanceOf(Factory::class, $client->raw());
+    }
+
+    public function test_post_is_not_retried_on_connection_exception(): void
+    {
+        config(['bog-sdk.http.retry_times' => 2, 'bog-sdk.http.retry_sleep_ms' => 0]);
+
+        $attempts = 0;
+        Http::fake([
+            'account-test.bog.ge/*' => Http::response(['access_token' => 't', 'expires_in' => 3600, 'token_type' => 'Bearer']),
+            'api-test.businessonline.ge/*' => function () use (&$attempts) {
+                $attempts++;
+                throw new ConnectionException('timeout');
+            },
+        ]);
+
+        $client = $this->app->make(HttpClient::class);
+
+        try {
+            $client->post('bonline', 'https://api-test.businessonline.ge/api/test', ['a' => 1]);
+        } catch (\Throwable) {
+            // expected — connection failed
+        }
+
+        $this->assertSame(1, $attempts, 'a non-idempotent POST must not be retried on a connection failure');
+    }
+
+    public function test_get_is_retried_on_connection_exception(): void
+    {
+        config(['bog-sdk.http.retry_times' => 2, 'bog-sdk.http.retry_sleep_ms' => 0]);
+
+        $attempts = 0;
+        Http::fake([
+            'account-test.bog.ge/*' => Http::response(['access_token' => 't', 'expires_in' => 3600, 'token_type' => 'Bearer']),
+            'api-test.businessonline.ge/*' => function () use (&$attempts) {
+                $attempts++;
+                throw new ConnectionException('timeout');
+            },
+        ]);
+
+        $client = $this->app->make(HttpClient::class);
+
+        try {
+            $client->get('bonline', 'https://api-test.businessonline.ge/api/test');
+        } catch (\Throwable) {
+            // expected — connection failed after retries
+        }
+
+        $this->assertSame(2, $attempts, 'an idempotent GET should retry on a connection failure (retry_times attempts)');
     }
 }

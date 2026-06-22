@@ -4,6 +4,13 @@ All notable changes to `laravel-bog-sdk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-06-22
+
+### Fixed
+- **Non-idempotent retry**: transport-level retry on `ConnectionException` is now limited to idempotent `GET` requests. A `POST`/`PUT`/`PATCH`/`DELETE` (create order, refund) may already have reached BOG before the connection dropped, so it is no longer re-sent — preventing duplicate orders and double refunds on a slow response.
+- **Callback parsing robustness**: `OrderCallbackDto` and `OrderDetailsDto` guard `order_status` with `is_array` before indexing `['key']`, so an unexpected payload shape no longer throws a `TypeError`.
+- **Token cache store**: `BOG_TOKEN_CACHE_STORE` is now honoured — the `TokenManager` resolves the configured cache store instead of always using the default.
+
 ## [1.0.1] - 2026-06-22
 
 ### Fixed

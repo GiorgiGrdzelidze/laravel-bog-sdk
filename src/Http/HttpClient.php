@@ -111,7 +111,7 @@ final class HttpClient implements HttpClientContract
      */
     private function send(string $method, string $token, string $url, array $data): Response
     {
-        $pending = $this->pending($token);
+        $pending = $this->pending($token, idempotent: $method === 'get');
 
         return match ($method) {
             'get' => $pending->get($url, $data),
@@ -124,26 +124,33 @@ final class HttpClient implements HttpClientContract
     }
 
     /**
-     * Build a PendingRequest pre-configured with token, headers, timeout, and retry.
+     * Build a PendingRequest pre-configured with token, headers, timeout, and
+     * (for idempotent requests only) transport-level retry.
      */
-    private function pending(string $token): PendingRequest
+    private function pending(string $token, bool $idempotent): PendingRequest
     {
         $httpConfig = $this->config['http'] ?? [];
 
-        return $this->http
+        $request = $this->http
             ->withToken($token)
             ->acceptJson()
             ->asJson()
-            ->timeout((int) ($httpConfig['timeout'] ?? 15))
-            ->retry(
+            ->timeout((int) ($httpConfig['timeout'] ?? 15));
+
+        // Retry only idempotent (GET) requests on a transport failure. A POST/PUT/
+        // PATCH/DELETE may already have reached BOG before the connection dropped,
+        // so re-sending could create a duplicate order or a double refund. HTTP error
+        // statuses are never retried either — they are returned to request()/getRaw().
+        if ($idempotent) {
+            $request = $request->retry(
                 (int) ($httpConfig['retry_times'] ?? 2),
                 (int) ($httpConfig['retry_sleep_ms'] ?? 250),
-                // Retry only on transport-level failures. HTTP error statuses are
-                // returned to the caller (handled by request()/getRaw()) so that
-                // non-idempotent POSTs are never silently re-sent on a 4xx/5xx.
                 when: static fn (\Throwable $exception): bool => $exception instanceof ConnectionException,
                 throw: false,
             );
+        }
+
+        return $request;
     }
 
     /**
