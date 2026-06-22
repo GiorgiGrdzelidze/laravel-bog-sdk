@@ -104,6 +104,36 @@ BOG_TOKEN_CACHE_PREFIX=bog-sdk:token:
 BOG_TOKEN_CACHE_SAFETY_TTL=60 # seconds before token expiry to refresh
 ```
 
+### 🧪 Sandbox (Payments)
+
+The BOG Payments sandbox is identical to production — only the hosts and
+credentials differ. Set `BOG_PAYMENTS_ENV=sandbox` and the SDK targets the
+`*-sandbox.bog.ge` hosts automatically:
+
+```dotenv
+BOG_PAYMENTS_ENV=sandbox            # 'live' (default) or 'sandbox'
+BOG_PAYMENTS_CLIENT_ID=your-sandbox-client-id
+BOG_PAYMENTS_CLIENT_SECRET=your-sandbox-client-secret
+```
+
+| | Sandbox (`BOG_PAYMENTS_ENV=sandbox`) | Production (default) |
+|---|---|---|
+| Token | `oauth2-sandbox.bog.ge` | `oauth2.bog.ge` |
+| API | `api-sandbox.bog.ge` | `api.bog.ge` |
+| Checkout | `payment-sandbox.bog.ge` | `payment.bog.ge` |
+
+The checkout host is returned by BOG in the order's `redirect` link, so you
+never configure it. To pin hosts manually, `BOG_PAYMENTS_BASE_URL` and
+`BOG_PAYMENTS_TOKEN_URL` still override the defaults.
+
+Test cards (any future expiry / any CVV):
+
+| Card | Outcome |
+|---|---|
+| `4000 0000 0000 0001` | ✅ success (Mastercard `5300…0001`, Amex `3700…0001`) |
+| `4000 0000 0000 0002` | ❌ declined — insufficient funds |
+| `4000 0000 0000 0003` | ✅ first payment, then refund/preauth/subscription declined |
+
 ---
 
 ## ⚡ Quick Start
@@ -362,17 +392,24 @@ Bog::payments()->googlePay()->complete($googlePayTokenData);
 
 ### 🔏 Verify Callback Signature
 
+BOG sends the callback as a POST whose RSA-SHA256 signature is carried in the
+`Callback-Signature` header. The order payload is nested under a `body` key —
+the SDK unwraps it for you.
+
 ```php
 // In your callback controller:
 $callback = Bog::payments()->verifyCallback(
     rawBody: $request->getContent(),
-    signatureHeader: $request->header('X-Signature'),
+    signatureHeader: $request->header('Callback-Signature'),
 );
 
-$callback->id;              // order ID
+$callback->id;              // order ID (from body.order_id)
 $callback->statusKey;       // "completed"
 $callback->externalOrderId; // your order reference
-$callback->totalAmount;     // 49.99
+$callback->totalAmount;     // transfer_amount, falling back to request_amount
+$callback->transferAmount;  // amount actually transferred
+$callback->requestAmount;   // amount originally requested
+$callback->event;           // "order_payment"
 ```
 
 > 🔑 Publish the BOG callback public key first: `php artisan vendor:publish --tag=bog-sdk-keys`

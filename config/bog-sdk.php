@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+// Payments environment: 'sandbox' targets the *-sandbox.bog.ge hosts, anything
+// else targets production. Explicit *_URL overrides below always take precedence.
+$paymentsSandbox = env('BOG_PAYMENTS_ENV', 'live') === 'sandbox';
+
 return [
     'http' => [
         'timeout' => (int) env('BOG_HTTP_TIMEOUT', 15),
@@ -27,8 +31,13 @@ return [
     ],
 
     'payments' => [
-        'base_url' => env('BOG_PAYMENTS_BASE_URL', 'https://api.bog.ge/payments/v1'),
-        'token_url' => env('BOG_PAYMENTS_TOKEN_URL', 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token'),
+        'env' => env('BOG_PAYMENTS_ENV', 'live'),
+        'base_url' => env('BOG_PAYMENTS_BASE_URL', $paymentsSandbox
+            ? 'https://api-sandbox.bog.ge/payments/v1'
+            : 'https://api.bog.ge/payments/v1'),
+        'token_url' => env('BOG_PAYMENTS_TOKEN_URL', $paymentsSandbox
+            ? 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
+            : 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token'),
         'client_id' => env('BOG_PAYMENTS_CLIENT_ID'),
         'client_secret' => env('BOG_PAYMENTS_CLIENT_SECRET'),
         'callback_public_key_path' => env('BOG_PAYMENTS_CALLBACK_KEY_PATH', storage_path('app/bog-sdk/bog-payments-callback.pem')),
