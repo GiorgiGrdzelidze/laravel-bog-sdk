@@ -4,6 +4,11 @@ All notable changes to `laravel-bog-sdk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-06-22
+
+### Fixed
+- **Buyer fields**: `BuyerDto` now sends/reads `masked_email` and `masked_phone` (the field names BOG actually uses) instead of `email`/`phone_number`, which BOG silently ignored — so buyer contact details now reach the payment page.
+
 ## [1.0.2] - 2026-06-22
 
 ### Fixed

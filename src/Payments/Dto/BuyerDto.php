@@ -22,20 +22,23 @@ final readonly class BuyerDto
     {
         return new self(
             fullName: isset($data['full_name']) ? (string) $data['full_name'] : null,
-            email: isset($data['email']) ? (string) $data['email'] : null,
-            phoneNumber: isset($data['phone_number']) ? (string) $data['phone_number'] : null,
+            email: isset($data['masked_email']) ? (string) $data['masked_email'] : null,
+            phoneNumber: isset($data['masked_phone']) ? (string) $data['masked_phone'] : null,
         );
     }
 
     /**
+     * Convert to the BOG buyer object. BOG names the contact fields
+     * masked_email / masked_phone (it masks them for the payment page).
+     *
      * @return array<string, string>
      */
     public function toArray(): array
     {
         return array_filter([
             'full_name' => $this->fullName,
-            'email' => $this->email,
-            'phone_number' => $this->phoneNumber,
+            'masked_email' => $this->email,
+            'masked_phone' => $this->phoneNumber,
         ], static fn (mixed $v): bool => $v !== null);
     }
 }
