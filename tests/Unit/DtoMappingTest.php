@@ -103,10 +103,11 @@ final class DtoMappingTest extends TestCase
 
     public function test_balance_dto_roundtrip(): void
     {
-        $data = ['AccountNumber' => 'GE00', 'Currency' => 'GEL', 'AvailableBalance' => 500.0, 'CurrentBalance' => 500.0, 'BlockedAmount' => 0.0];
+        $data = ['AccountNumber' => 'GE00', 'Currency' => 'GEL', 'AccountKey' => 42, 'AvailableBalance' => 500.0, 'CurrentBalance' => 500.0, 'BlockedAmount' => 0.0, 'StatementBalance' => null];
         $dto = BalanceDto::fromArray($data);
         $this->assertSame('GE00', $dto->accountNumber);
         $this->assertSame($data, $dto->toArray());
+        $this->assertSame($dto->toArray(), BalanceDto::fromArray($dto->toArray())->toArray());
     }
 
     public function test_account_dto_from_array(): void

@@ -22,17 +22,16 @@ final class BalanceEndpoint
      *
      * @param  string  $accountNumber  IBAN account number.
      * @param  string  $currency  ISO 4217 currency code (e.g. GEL, USD).
-     * @param  bool  $initStatementBalance  Whether to initialize statement balance data.
+     * @param  bool  $initStatementBalance  Ask Bonline to also fill StatementBalance.
      */
     public function get(string $accountNumber, string $currency, bool $initStatementBalance = false): BalanceDto
     {
         $url = $this->baseUrl.'/accounts/'
             .urlencode($accountNumber).'/'
-            .urlencode($currency).'/'
-            .($initStatementBalance ? '1' : '0');
+            .urlencode($currency);
 
-        $data = $this->http->get('bonline', $url);
+        $data = $this->http->get('bonline', $url, $initStatementBalance ? ['initStatementBalance' => 'true'] : []);
 
-        return BalanceDto::fromArray($data);
+        return BalanceDto::fromArray($data, $accountNumber, $currency);
     }
 }

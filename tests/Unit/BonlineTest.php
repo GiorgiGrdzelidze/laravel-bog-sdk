@@ -8,6 +8,7 @@ use GiorgiGrdzelidze\BogSdk\BogClient;
 use GiorgiGrdzelidze\BogSdk\Bonline\Dto\BalanceDto;
 use GiorgiGrdzelidze\BogSdk\Bonline\Dto\CurrencyRateDto;
 use GiorgiGrdzelidze\BogSdk\Bonline\Dto\StatementPageDto;
+use GiorgiGrdzelidze\BogSdk\Bonline\Dto\TodayActivityDto;
 use GiorgiGrdzelidze\BogSdk\Bonline\Dto\TransactionDto;
 use GiorgiGrdzelidze\BogSdk\Tests\TestCase;
 use Illuminate\Support\Facades\Http;
@@ -154,20 +155,152 @@ final class BonlineTest extends TestCase
         $this->assertSame(2, $transactions[1]->entryId);
     }
 
-    public function test_today_activities(): void
+    public function test_today_activities_map_the_feeds_own_fields(): void
     {
+        $card = 'გადახდა - თარიღი: 16/10/2026 12:41:31; თანხა:GEL 212.25; საკომისიო: GEL 3.18; ბარათი: VISA, 411634***2444; კოდი: 531133; ტერმინალის ID: POS1NB83; დეპოზ:POS1NB83R9R; LUMINO;  ID:; მისამართი: ქავთარაძის 78';
         $this->fakeTokenAndEndpoint(
             'api-test.businessonline.ge/api/documents/v2/todayactivities/GE00BG0000000000000001/GEL',
-            Http::response(['Records' => [$this->makeTxFields(['EntryId' => 555, 'EntryAmountDebit' => 100.0, 'EntryComment' => 'Today'])]]),
+            Http::response(['Records' => [
+                ['Id' => 127764475501, 'DocKey' => 49608711099, 'DocNo' => '11921057645', 'PostDate' => '2026-10-16T00:00:00', 'ValueDate' => '0001-01-01T00:00:00',
+                    'EntryType' => 'TRN', 'EntryComment' => $card, 'EntryCommentEn' => $card, 'Nomination' => $card, 'Credit' => 209.07, 'Debit' => 0, 'Amount' => 209.07, 'AmountBase' => 209.07,
+                    'PayerName' => 'შპს მაღაზია', 'PayerInn' => '405000000', 'Sender' => ['Name' => null, 'Inn' => null, 'AccountNumber' => null],
+                    'Beneficiary' => ['Name' => 'შპს მაღაზია', 'Inn' => '405000000', 'AccountNumber' => 'GE00BG0000000000000001GEL', 'BankCode' => 'BAGAGE22']],
+                ['Id' => 2, 'DocKey' => 3, 'DocNo' => '4', 'PostDate' => '2026-10-16T00:00:00', 'ValueDate' => '2026-10-16T00:00:00', 'EntryType' => 'PMD',
+                    'Nomination' => 'თანხის გადარიცხვა', 'Credit' => 81, 'Debit' => 0, 'Amount' => 81, 'AmountBase' => 81],
+                ['Id' => 5, 'EntryType' => 'TRN', 'Nomination' => $card, 'Credit' => 0, 'Debit' => 12.5, 'Amount' => -12.5],
+            ]]),
         );
 
         /** @var BogClient $client */
         $client = $this->app->make(BogClient::class);
         $activities = $client->bonline()->todayActivities()->get('GE00BG0000000000000001', 'GEL');
 
-        $this->assertCount(1, $activities);
-        $this->assertInstanceOf(TransactionDto::class, $activities[0]);
-        $this->assertSame(555, $activities[0]->entryId);
+        $this->assertCount(3, $activities);
+        $this->assertInstanceOf(TodayActivityDto::class, $activities[0]);
+        $this->assertSame(127764475501, $activities[0]->id);
+        $this->assertSame(209.07, $activities[0]->credit);
+        $this->assertSame('2026-10-16T00:00:00', $activities[0]->postDate);
+        $this->assertNull($activities[0]->valueDate);
+        $this->assertSame('TRN', $activities[0]->entryType);
+        $this->assertSame('GE00BG0000000000000001GEL', $activities[0]->beneficiary['AccountNumber']);
+        $this->assertTrue($activities[0]->isCredit());
+        $payment = $activities[0]->cardPayment();
+        $this->assertNotNull($payment);
+        $this->assertSame(212.25, $payment->amount);
+        $this->assertSame(209.07, $payment->netAmount());
+        $this->assertSame('2026-10-16 12:41:31', $payment->purchasedAt->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-10-16T00:00:00', $activities[1]->valueDate);
+        $this->assertNull($activities[1]->cardPayment());
+        $this->assertFalse($activities[2]->isCredit());
+        $this->assertNull($activities[2]->cardPayment());
+        $this->assertSame(127764475501, $activities[0]->toArray()['Id']);
+    }
+
+    public function test_today_activities_accept_a_bare_list(): void
+    {
+        $this->fakeTokenAndEndpoint(
+            'api-test.businessonline.ge/api/documents/v2/todayactivities/GE00BG0000000000000001/GEL',
+            Http::response([['Id' => 9, 'Credit' => 5, 'Nomination' => 'x']]),
+        );
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+
+        $this->assertSame(9, $client->bonline()->todayActivities()->get('GE00BG0000000000000001', 'GEL')[0]->id);
+    }
+
+    public function test_statement_stream_pages_until_total_count_not_page_count(): void
+    {
+        $base = 'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/';
+        Http::fake([
+            'account-test.bog.ge/*' => Http::response(['access_token' => 'bonline-token', 'expires_in' => 3600, 'token_type' => 'Bearer']),
+            $base.'2025-01-01/2025-12-31' => Http::response(['Id' => 4937843466048260, 'Count' => 2, 'TotalCount' => 5, 'Records' => [
+                $this->makeTxFields(['EntryId' => 1]), $this->makeTxFields(['EntryId' => 2]),
+            ]]),
+            $base.'4937843466048260/2' => Http::response(['Id' => 4937843466069302, 'Count' => 2, 'TotalCount' => 5, 'Records' => [
+                $this->makeTxFields(['EntryId' => 3]), $this->makeTxFields(['EntryId' => 4]),
+            ]]),
+            $base.'4937843466048260/3' => Http::response(['Id' => 4937843466069302, 'Count' => 1, 'TotalCount' => 5, 'Records' => [
+                $this->makeTxFields(['EntryId' => 5]),
+            ]]),
+            $base.'*' => Http::response(['Count' => 0, 'TotalCount' => 5, 'Records' => []]),
+        ]);
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $ids = array_map(fn (TransactionDto $t) => $t->entryId, iterator_to_array($client->bonline()->statement()->stream(
+            new \DateTimeImmutable('2025-01-01'), new \DateTimeImmutable('2025-12-31'), 'GEL', 'GE00BG0000000000000001',
+        ), false));
+
+        $this->assertSame([1, 2, 3, 4, 5], $ids);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/4937843466048260/4'));
+    }
+
+    public function test_statement_stream_stops_on_an_empty_page_even_if_total_count_is_higher(): void
+    {
+        $base = 'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/';
+        Http::fake([
+            'account-test.bog.ge/*' => Http::response(['access_token' => 'bonline-token', 'expires_in' => 3600, 'token_type' => 'Bearer']),
+            $base.'2025-01-01/2025-01-31' => Http::response(['Id' => 77, 'Count' => 1, 'TotalCount' => 10, 'Records' => [$this->makeTxFields(['EntryId' => 1])]]),
+            $base.'77/2' => Http::response(['Id' => 77, 'Count' => 0, 'TotalCount' => 10, 'Records' => []]),
+            $base.'*' => Http::response(['Records' => [$this->makeTxFields(['EntryId' => 99])]]),
+        ]);
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $all = iterator_to_array($client->bonline()->statement()->stream(new \DateTimeImmutable('2025-01-01'), new \DateTimeImmutable('2025-01-31'), 'GEL', 'GE00BG0000000000000001'), false);
+
+        $this->assertCount(1, $all);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/77/3'));
+    }
+
+    public function test_statement_stream_single_page_makes_no_page_requests(): void
+    {
+        $base = 'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/';
+        Http::fake([
+            'account-test.bog.ge/*' => Http::response(['access_token' => 'bonline-token', 'expires_in' => 3600, 'token_type' => 'Bearer']),
+            $base.'2025-01-01/2025-01-31' => Http::response(['Id' => 5, 'Count' => 2, 'TotalCount' => 2, 'Records' => [$this->makeTxFields(['EntryId' => 1]), $this->makeTxFields(['EntryId' => 2])]]),
+            $base.'*' => Http::response(['Records' => [$this->makeTxFields(['EntryId' => 99])]]),
+        ]);
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $all = iterator_to_array($client->bonline()->statement()->stream(new \DateTimeImmutable('2025-01-01'), new \DateTimeImmutable('2025-01-31'), 'GEL', 'GE00BG0000000000000001'), false);
+
+        $this->assertCount(2, $all);
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/5/2'));
+    }
+
+    public function test_statement_stream_falls_back_to_count_without_total_count(): void
+    {
+        $base = 'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/';
+        Http::fake([
+            'account-test.bog.ge/*' => Http::response(['access_token' => 'bonline-token', 'expires_in' => 3600, 'token_type' => 'Bearer']),
+            $base.'2025-01-01/2025-01-31' => Http::response(['Id' => 6, 'Count' => 2, 'Records' => [$this->makeTxFields(['EntryId' => 1])]]),
+            $base.'6/2' => Http::response([$this->makeTxFields(['EntryId' => 2])]),
+        ]);
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $all = iterator_to_array($client->bonline()->statement()->stream(new \DateTimeImmutable('2025-01-01'), new \DateTimeImmutable('2025-01-31'), 'GEL', 'GE00BG0000000000000001'), false);
+
+        $this->assertSame([1, 2], array_map(fn (TransactionDto $t) => $t->entryId, $all));
+    }
+
+    public function test_statement_page_reads_the_records_envelope(): void
+    {
+        $this->fakeTokenAndEndpoint(
+            'api-test.businessonline.ge/api/statement/v2/GE00BG0000000000000001/GEL/12345/2',
+            Http::response(['Id' => 12346, 'Count' => 2, 'TotalCount' => 1002, 'Records' => [
+                $this->makeTxFields(['EntryId' => 1001]), $this->makeTxFields(['EntryId' => 1002]),
+            ]]),
+        );
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $page = $client->bonline()->statement()->page('GE00BG0000000000000001', 'GEL', 12345, 2);
+
+        $this->assertSame([1001, 1002], array_map(fn (TransactionDto $t) => $t->entryId, $page));
     }
 
     public function test_summary(): void
@@ -218,14 +351,8 @@ final class BonlineTest extends TestCase
     public function test_balance(): void
     {
         $this->fakeTokenAndEndpoint(
-            'api-test.businessonline.ge/api/accounts/GE00BG0000000000000001/GEL/0',
-            Http::response([
-                'AccountNumber' => 'GE00BG0000000000000001',
-                'Currency' => 'GEL',
-                'AvailableBalance' => 1234.56,
-                'CurrentBalance' => 1234.56,
-                'BlockedAmount' => 0.0,
-            ]),
+            'api-test.businessonline.ge/api/accounts/GE00BG0000000000000001/GEL',
+            Http::response(['AccountKey' => 11607228090, 'AvailableBalance' => 42631.22, 'CurrentBalance' => 42631.22, 'StatementBalance' => null]),
         );
 
         /** @var BogClient $client */
@@ -234,8 +361,32 @@ final class BonlineTest extends TestCase
 
         $this->assertInstanceOf(BalanceDto::class, $balance);
         $this->assertSame('GE00BG0000000000000001', $balance->accountNumber);
-        $this->assertSame(1234.56, $balance->availableBalance);
+        $this->assertSame('GEL', $balance->currency);
+        $this->assertSame(42631.22, $balance->availableBalance);
+        $this->assertSame(42631.22, $balance->currentBalance);
         $this->assertSame(0.0, $balance->blockedAmount);
+        $this->assertSame(11607228090, $balance->accountKey);
+        $this->assertNull($balance->statementBalance);
+
+        Http::assertSent(fn ($r) => $r->url() === 'https://api-test.businessonline.ge/api/accounts/GE00BG0000000000000001/GEL');
+    }
+
+    public function test_balance_derives_the_blocked_amount_and_passes_the_statement_flag_as_query(): void
+    {
+        $this->fakeTokenAndEndpoint(
+            'api-test.businessonline.ge/api/accounts/GE00BG0000000000000001/USD*',
+            Http::response(['AccountKey' => 7, 'AvailableBalance' => 900.0, 'CurrentBalance' => 1000.0, 'StatementBalance' => 950.5]),
+        );
+
+        /** @var BogClient $client */
+        $client = $this->app->make(BogClient::class);
+        $balance = $client->bonline()->balance()->get('GE00BG0000000000000001', 'USD', initStatementBalance: true);
+
+        $this->assertSame(100.0, $balance->blockedAmount);
+        $this->assertSame(950.5, $balance->statementBalance);
+        $this->assertSame('USD', $balance->currency);
+        Http::assertSent(fn ($r) => $r->url() === 'https://api-test.businessonline.ge/api/accounts/GE00BG0000000000000001/USD?initStatementBalance=true');
+        Http::assertNotSent(fn ($r) => str_ends_with(parse_url($r->url(), PHP_URL_PATH) ?? '', '/1') || str_ends_with(parse_url($r->url(), PHP_URL_PATH) ?? '', '/0'));
     }
 
     public function test_check_inn(): void
