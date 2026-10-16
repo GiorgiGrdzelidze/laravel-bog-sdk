@@ -4,6 +4,21 @@ All notable changes to `laravel-bog-sdk` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-16
+
+Verified against the live Bonline API (a full year's statement, today's activities and balances).
+
+### Fixed
+- **Statement paging**: `stream()` stopped after the first page because it compared against `Count` — the size of the current page (max 1000) — instead of `TotalCount`. It now follows `TotalCount` across pages (2,893 of 2,893 records for a year where it used to return 1,000) and still stops on an empty page.
+- **`statement()->page()`**: Bonline answers later pages with the same `{Id, Count, TotalCount, Records}` envelope as the first one; `page()` treated the envelope as a list of records. It now reads `Records` (a bare list is still accepted).
+- **Balance**: `balance()->get()` called `/accounts/{account}/{currency}/{0|1}`, which Bonline rejects with HTTP 400. It now calls `/accounts/{account}/{currency}` and sends `initStatementBalance` as a query parameter. `BalanceDto` maps the real response — `AccountKey`, `AvailableBalance`, `CurrentBalance`, `StatementBalance` — takes the account and currency from the request and derives `blockedAmount` when Bonline omits it.
+- **Today's activities**: the feed uses its own field names (`Credit`, `Debit`, `Nomination`, `PostDate`, …), so mapping it onto `TransactionDto` produced empty amounts. `todayActivities()->get()` now returns `TodayActivityDto[]`. If you read `entryAmountCredit` etc. from it before, switch to `credit` / `debit` / `nomination` (those values were always empty).
+
+### Added
+- `CardPaymentDto::fromText()` parses POS terminal card payments (purchase time, gross amount, commission, net amount, terminal, card, auth code, deposit id, merchant, address); `TransactionDto::cardPayment()` and `TodayActivityDto::cardPayment()` expose it, including older statements that keep the narrative in `EntryComment`.
+- `TodayActivityDto` with `isCredit()`, `cardPayment()` and the raw record.
+- `BalanceDto::$accountKey` and `BalanceDto::$statementBalance`.
+
 ## [1.0.3] - 2026-06-22
 
 ### Fixed

@@ -157,11 +157,16 @@ $client = app(BogClient::class);
 ```php
 $balance = Bog::bonline()->balance()->get('GE29BG0000000123456789', 'GEL');
 
-$balance->accountNumber;    // "GE29BG0000000123456789"
+$balance->accountNumber;    // "GE29BG0000000123456789" (from the request)
 $balance->currency;         // "GEL"
 $balance->availableBalance; // 5432.10
 $balance->currentBalance;   // 5500.00
-$balance->blockedAmount;    // 67.90
+$balance->blockedAmount;    // 67.90 (current − available)
+$balance->accountKey;       // 11607228090
+$balance->statementBalance; // null unless requested
+
+// Ask Bonline to also fill StatementBalance
+$balance = Bog::bonline()->balance()->get('GE29BG0000000123456789', 'GEL', initStatementBalance: true);
 ```
 
 ### 📄 Statement (with auto-pagination)
@@ -175,11 +180,13 @@ $page = Bog::bonline()->statement()->forPeriod(
     accountNumber: 'GE29BG0000000123456789',
 );
 
-$page->id;    // statement ID for paging
-$page->count; // total records across all pages
-$page->records; // TransactionDto[]
+$page->id;         // statement ID for paging
+$page->count;      // records on this page (max 1000)
+$page->totalCount; // records across all pages
+$page->records;    // TransactionDto[]
 
-// 🔄 Stream all pages automatically (generator)
+// 🔄 Stream all pages automatically (generator) — follows TotalCount across pages
+// Tip: keep each period to a year or less; Bonline rejects longer ranges.
 foreach (Bog::bonline()->statement()->stream(
     from: new DateTimeImmutable('2026-01-01'),
     to: new DateTimeImmutable('2026-03-31'),
@@ -197,7 +204,7 @@ foreach (Bog::bonline()->statement()->stream(
 Pages must be fetched sequentially — skipping is not allowed by the API.
 
 ```php
-// Returns TransactionDto[] (flat array)
+// Returns TransactionDto[] (the page's Records)
 $records = Bog::bonline()->statement()->page(
     accountNumber: 'GE29BG0000000123456789',
     currency: 'GEL',
@@ -222,12 +229,44 @@ $summary = Bog::bonline()->summary()->get('GE29BG0000000123456789', 'GEL', $stat
 
 ### 📅 Today's Activities
 
+Near-live movements of the current day (statements only contain closed days). The feed has its own
+field names, so it returns `TodayActivityDto`:
+
 ```php
 $activities = Bog::bonline()->todayActivities()->get('GE29BG0000000123456789', 'GEL');
 
-foreach ($activities as $tx) {
-    echo $tx->entryAmountDebit . ' / ' . $tx->entryAmountCredit . ' — ' . $tx->entryComment;
+foreach ($activities as $activity) {
+    echo $activity->credit . ' / ' . $activity->debit . ' — ' . $activity->nomination;
+    $activity->postDate;    // "2026-10-16T00:00:00"
+    $activity->entryType;   // "TRN", "PMD", …
+    $activity->beneficiary; // ['Name' => …, 'AccountNumber' => …]
 }
+```
+
+### 💳 POS Card Payments
+
+Card payments taken on your BOG terminals arrive as one credit each, described only in the narrative
+(`გადახდა - თარიღი: … თანხა:GEL … საკომისიო: … ტერმინალის ID: …`). The SDK parses it for you — on
+statement transactions and on today's activities alike:
+
+```php
+foreach (Bog::bonline()->todayActivities()->get($iban, 'GEL') as $activity) {
+    if ($payment = $activity->cardPayment()) {
+        $payment->purchasedAt; // DateTimeImmutable 2026-10-16 12:41:31
+        $payment->amount;      // 212.25 — what the customer paid
+        $payment->commission;  // 3.18
+        $payment->netAmount(); // 209.07 — what was credited
+        $payment->terminalId;  // "POS1NB83"
+        $payment->card;        // "VISA, 411634***2444"
+        $payment->address;     // "ქავთარაძის 78"
+    }
+}
+
+// Statement rows too (older statements keep the text in EntryComment — handled)
+$payment = $transaction->cardPayment(); // ?CardPaymentDto
+
+// Or parse any narrative directly
+CardPaymentDto::fromText($text); // null for transfers, cash deposits, your own card spending, …
 ```
 
 ### 💱 Currency Rates
@@ -727,7 +766,7 @@ src/
 │   ├── Enums/BogIdClaim.php         — OIDC scope enum
 │   └── BogIdClient.php              — Redirect, code exchange, userinfo
 ├── 🏢 Bonline/
-│   ├── Dto/                         — Account, Balance, CurrencyRate, StatementPage, Summary, Transaction
+│   ├── Dto/                         — Account, Balance, CardPayment, CurrencyRate, StatementPage, Summary, TodayActivity, Transaction
 │   ├── Endpoints/                   — Accounts, Balance, CurrencyRates, Requisites, Statement, Summary, TodayActivities
 │   ├── Enums/BonlineResultCode.php  — Result code enum
 │   └── BonlineClient.php            — Lazy-loaded endpoint orchestrator

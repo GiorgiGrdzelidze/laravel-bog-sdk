@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace GiorgiGrdzelidze\BogSdk\Bonline\Endpoints;
 
-use GiorgiGrdzelidze\BogSdk\Bonline\Dto\TransactionDto;
+use GiorgiGrdzelidze\BogSdk\Bonline\Dto\TodayActivityDto;
 use GiorgiGrdzelidze\BogSdk\Http\HttpClient;
 
 /**
@@ -22,7 +22,7 @@ final class TodayActivitiesEndpoint
      *
      * @param  string  $accountNumber  IBAN account number.
      * @param  string  $currency  ISO 4217 currency code.
-     * @return TransactionDto[]
+     * @return TodayActivityDto[]
      */
     public function get(string $accountNumber, string $currency): array
     {
@@ -32,9 +32,11 @@ final class TodayActivitiesEndpoint
 
         $data = $this->http->get('bonline', $url);
 
+        $records = array_is_list($data) ? $data : (array) ($data['Records'] ?? []);
+
         return array_map(
-            static fn (array $record): TransactionDto => TransactionDto::fromArray($record),
-            (array) ($data['Records'] ?? $data),
+            static fn (array $record): TodayActivityDto => TodayActivityDto::fromArray($record),
+            array_values(array_filter($records, 'is_array')),
         );
     }
 }

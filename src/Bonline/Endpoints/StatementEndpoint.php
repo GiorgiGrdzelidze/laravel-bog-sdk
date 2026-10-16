@@ -51,8 +51,8 @@ final class StatementEndpoint
     /**
      * Fetch a specific page from an already-generated statement.
      *
-     * Pages must be fetched sequentially (no skipping).
-     * Returns a flat array of TransactionDto (paging endpoint returns an array, not wrapped object).
+     * Pages must be fetched sequentially (no skipping). Bonline answers with the same
+     * {Id, Count, TotalCount, Records} envelope as the first page; a bare list is accepted too.
      *
      * @param  string  $accountNumber  IBAN account number.
      * @param  string  $currency  ISO 4217 currency code.
@@ -73,18 +73,19 @@ final class StatementEndpoint
             .$pageNumber;
 
         $data = $this->http->get('bonline', $url);
+        $records = array_is_list($data) ? $data : (array) ($data['Records'] ?? []);
 
         return array_map(
             static fn (array $record): TransactionDto => TransactionDto::fromArray($record),
-            (array) $data,
+            array_values(array_filter($records, 'is_array')),
         );
     }
 
     /**
      * Auto-paginating generator that yields individual TransactionDto objects.
      *
-     * Fetches the first page, then automatically loads subsequent pages
-     * sequentially until all records have been yielded.
+     * Fetches the first page, then loads subsequent pages sequentially until TotalCount
+     * records have been yielded (Count is only the size of the current page, at most 1000).
      *
      * @param  DateTimeInterface  $from  Period start date.
      * @param  DateTimeInterface  $to  Period end date.
@@ -99,6 +100,7 @@ final class StatementEndpoint
         string $accountNumber,
     ): Generator {
         $firstPage = $this->forPeriod($from, $to, $currency, $accountNumber);
+        $total = $firstPage->totalCount > 0 ? $firstPage->totalCount : $firstPage->count;
         $yielded = 0;
 
         foreach ($firstPage->records as $record) {
@@ -106,24 +108,21 @@ final class StatementEndpoint
             $yielded++;
         }
 
-        if ($firstPage->id === '' || $yielded >= $firstPage->count) {
+        if ($firstPage->id === '') {
             return;
         }
 
-        $pageNumber = 2;
-        while ($yielded < $firstPage->count) {
+        for ($pageNumber = 2; $yielded < $total; $pageNumber++) {
             $records = $this->page($accountNumber, $currency, (int) $firstPage->id, $pageNumber);
+
+            if ($records === []) {
+                break;
+            }
 
             foreach ($records as $record) {
                 yield $record;
                 $yielded++;
             }
-
-            if (count($records) === 0) {
-                break;
-            }
-
-            $pageNumber++;
         }
     }
 }

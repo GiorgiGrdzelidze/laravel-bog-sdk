@@ -94,6 +94,18 @@ final readonly class TransactionDto
     }
 
     /**
+     * The POS card payment behind this credit, if it is one (older statements keep the text in EntryComment).
+     */
+    public function cardPayment(): ?CardPaymentDto
+    {
+        if ($this->entryAmountCredit <= 0) {
+            return null;
+        }
+
+        return CardPaymentDto::fromText($this->documentNomination !== '' ? $this->documentNomination : $this->entryComment);
+    }
+
+    /**
      * Get the beneficiary name (from nested BeneficiaryDetails).
      */
     public function beneficiaryName(): string
